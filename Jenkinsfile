@@ -63,26 +63,21 @@ pipeline {
 
         stage('5. Open SSH Tunnel') {
             steps {
-                sshagent(credentials: ['k8s-control-ssh']) {
+                sshagent(['k8s-ssh-key']) {
                     sh '''
                         set -eu
+                        mkdir -p ~/.ssh
+                        ssh-keyscan -H "$CONTROL_PUBLIC_IP" >> ~/.ssh/known_hosts
 
-                        mkdir -p "$HOME/.ssh"
-                        ssh-keyscan -H "$CONTROL_PUBLIC_IP" >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
-
-                        # Xóa tunnel cũ nếu còn tồn tại
                         if [ -f /tmp/k8s-tunnel.pid ]; then
-                            kill "$(cat /tmp/k8s-tunnel.pid)" 2>/dev/null || true
+                            kill $(cat /tmp/k8s-tunnel.pid) || true
                             rm -f /tmp/k8s-tunnel.pid
                         fi
 
-                        # Mở SSH Tunnel ngầm tới API Server (port 6443)
-                        ssh -o ExitOnForwardFailure=yes -N -L 16443:127.0.0.1:6443 "ubuntu@${CONTROL_PUBLIC_IP}" &
-
-                        echo $! > /tmp/k8s-tunnel.pid
-                        sleep 3
-
-                        nc -zv 127.0.0.1 16443
+                        ssh -o ExitOnForwardFailure=yes -f -N -L 16443:127.0.0.1:6443 "ubuntu@${CONTROL_PUBLIC_IP}"
+                        
+                        # Kiểm tra port 16443 đã lắng nghe chưa (không xài nc)
+                        timeout 10 bash -c 'until echo > /dev/tcp/127.0.0.1/16443; do sleep 1; done'
                     '''
                 }
             }
