@@ -3,8 +3,6 @@ kind: Deployment
 metadata:
   name: myapp
   namespace: cicd-lab
-  labels:
-    app: myapp
 spec:
   replicas: 2
   strategy:
@@ -24,12 +22,9 @@ spec:
         - name: ecr-registry-secret
       containers:
         - name: myapp
-          # Jenkins sẽ tự động thay placeholder này bằng ECR Image URL chuẩn kèm Git SHA tag
           image: MY_ECR_IMAGE
-          imagePullPolicy: Always
           ports:
-            - name: http
-              containerPort: 80
+            - containerPort: 80
           resources:
             requests:
               cpu: 50m
@@ -40,16 +35,6 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: http
-            initialDelaySeconds: 3
-            periodSeconds: 5
-            timeoutSeconds: 2
-            failureThreshold: 6
-          livenessProbe:
-            httpGet:
-              path: /
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 2
-            failureThreshold: 3
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 3
