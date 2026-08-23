@@ -4,7 +4,7 @@ pipeline {
     environment {
         AWS_REGION        = 'ap-southeast-1'
         AWS_ACCOUNT_ID    = '475309741409'
-        ECR_REPOSITORY    = '475309741409.dkr.ecr.ap-southeast-1.amazonaws.com/kim-k8s-cicd-app'
+        ECR_REPOSITORY    = 'kim-k8s-cicd-app'
         ECR_REGISTRY      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
         IMAGE_TAG         = "v${BUILD_NUMBER}"
