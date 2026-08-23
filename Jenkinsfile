@@ -75,16 +75,13 @@ pipeline {
                             rm -f /tmp/k8s-tunnel.pid
                         fi
 
-                        # Mở SSH Tunnel với các tham số giữ kết nối (KeepAlive)
+                        # Forward cổng 16443 qua IP nội bộ 10.20.10.69:6443 thay vì 127.0.0.1
                         ssh -f -N \
                             -o ExitOnForwardFailure=yes \
                             -o ServerAliveInterval=10 \
                             -o ServerAliveCountMax=3 \
-                            -L 127.0.0.1:16443:127.0.0.1:6443 \
+                            -L 127.0.0.1:16443:10.20.10.69:6443 \
                             "ubuntu@${CONTROL_PUBLIC_IP}"
-
-                        # Lưu PID tunnel để Post-action dọn dẹp
-                        pgrep -f "16443:127.0.0.1:6443" > /tmp/k8s-tunnel.pid || true
 
                         # Chờ cổng 16443 sẵn sàng
                         timeout 15 bash -c 'until echo > /dev/tcp/127.0.0.1/16443; do sleep 1; done'
