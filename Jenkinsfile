@@ -63,21 +63,31 @@ pipeline {
 
         stage('5. Open SSH Tunnel') {
             steps {
-                sshagent(['k8s-control-ssh']) {
+                sshagent(['k8s-ssh-key']) {
                     sh '''
                         set -eu
                         mkdir -p ~/.ssh
                         ssh-keyscan -H "$CONTROL_PUBLIC_IP" >> ~/.ssh/known_hosts
 
+                        # Dọn dẹp tunnel cũ nếu có
                         if [ -f /tmp/k8s-tunnel.pid ]; then
                             kill $(cat /tmp/k8s-tunnel.pid) || true
                             rm -f /tmp/k8s-tunnel.pid
                         fi
 
-                        ssh -o ExitOnForwardFailure=yes -f -N -L 16443:127.0.0.1:6443 "ubuntu@${CONTROL_PUBLIC_IP}"
-                        
-                        # Kiểm tra port 16443 đã lắng nghe chưa (không xài nc)
-                        timeout 10 bash -c 'until echo > /dev/tcp/127.0.0.1/16443; do sleep 1; done'
+                        # Mở SSH Tunnel với các tham số giữ kết nối (KeepAlive)
+                        ssh -f -N \
+                            -o ExitOnForwardFailure=yes \
+                            -o ServerAliveInterval=10 \
+                            -o ServerAliveCountMax=3 \
+                            -L 127.0.0.1:16443:127.0.0.1:6443 \
+                            "ubuntu@${CONTROL_PUBLIC_IP}"
+
+                        # Lưu PID tunnel để Post-action dọn dẹp
+                        pgrep -f "16443:127.0.0.1:6443" > /tmp/k8s-tunnel.pid || true
+
+                        # Chờ cổng 16443 sẵn sàng
+                        timeout 15 bash -c 'until echo > /dev/tcp/127.0.0.1/16443; do sleep 1; done'
                     '''
                 }
             }
