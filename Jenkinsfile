@@ -116,7 +116,7 @@ pipeline {
                         set -eu
 
                         sed "s|MY_ECR_IMAGE|${IMAGE_URI}|g" deployment.yaml | kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true apply -f -
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true apply -f k8s/service.yaml
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true apply -f service.yaml
                         kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" rollout status deployment/myapp --timeout=180s
                     '''
                 }
