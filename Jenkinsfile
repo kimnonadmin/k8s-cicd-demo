@@ -47,7 +47,7 @@ pipeline {
 
         stage('4. Push Image to ECR') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials']]) {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '770132e7-3ee4-470d-abfe-2c981bb6aa0e']]) {
                     sh '''
                         set +x
                         set -eu
@@ -91,7 +91,7 @@ pipeline {
         stage('6. Refresh ECR Pull Secret') {
             steps {
                 withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-ecr-credentials'],
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: '770132e7-3ee4-470d-abfe-2c981bb6aa0e'],
                     file(credentialsId: 'kubeconfig-hybrid-lab', variable: 'KUBECONFIG')
                 ]) {
                     sh '''
