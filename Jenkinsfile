@@ -124,7 +124,11 @@ pipeline {
 
                         sed "s|MY_ECR_IMAGE|${IMAGE_URI}|g" deployment.yaml | kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" apply -f -
                         kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" apply -f service.yaml
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" rollout status deployment/myapp --timeout=180s
+                        
+                        # Cho K8s Controller 5 giay de nhan dien ReplicaSet
+                        sleep 5
+
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" rollout status deployment/myapp --timeout=300s
                     '''
                 }
             }
