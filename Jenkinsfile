@@ -63,7 +63,7 @@ pipeline {
 
         stage('5. Open SSH Tunnel') {
             steps {
-                sshagent(['k8s-ssh-key']) {
+                sshagent(['k8s-control-ssh']) {
                     sh '''
                         set -eu
                         mkdir -p ~/.ssh
