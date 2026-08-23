@@ -82,7 +82,7 @@ pipeline {
                 }
             }
         }
-
+        
         stage('6. Refresh ECR Pull Secret') {
             steps {
                 withCredentials([
@@ -95,11 +95,11 @@ pipeline {
 
                         ECR_PASSWORD=$(aws ecr get-login-password --region "$AWS_REGION")
 
-                        kubectl -n "$K8S_NAMESPACE" create secret docker-registry ecr-registry-secret \
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" create secret docker-registry ecr-registry-secret \
                             --docker-server="$ECR_REGISTRY" \
                             --docker-username=AWS \
                             --docker-password="$ECR_PASSWORD" \
-                            --dry-run=client -o yaml | kubectl apply -f -
+                            --dry-run=client -o yaml | kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true apply -f -
 
                         unset ECR_PASSWORD
                     '''
@@ -115,9 +115,9 @@ pipeline {
                     sh '''
                         set -eu
 
-                        sed "s|MY_ECR_IMAGE|${IMAGE_URI}|g" k8s/deployment.yaml | kubectl apply -f -
-                        kubectl apply -f k8s/service.yaml
-                        kubectl -n "$K8S_NAMESPACE" rollout status deployment/myapp --timeout=180s
+                        sed "s|MY_ECR_IMAGE|${IMAGE_URI}|g" k8s/deployment.yaml | kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true apply -f -
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true apply -f k8s/service.yaml
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" rollout status deployment/myapp --timeout=180s
                     '''
                 }
             }
@@ -131,16 +131,15 @@ pipeline {
                     sh '''
                         set -eu
 
-                        kubectl -n "$K8S_NAMESPACE" get deployment myapp
-                        kubectl -n "$K8S_NAMESPACE" get pods -l app=myapp -o wide
-                        kubectl -n "$K8S_NAMESPACE" get service myapp-service
-                        kubectl -n "$K8S_NAMESPACE" get deployment myapp -o jsonpath='{.spec.template.spec.containers[0].image}'
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get deployment myapp
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get pods -l app=myapp -o wide
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get service myapp-service
+                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get deployment myapp -o jsonpath='{.spec.template.spec.containers[0].image}'
                         echo
                     '''
                 }
             }
         }
-    }
 
     post {
         always {
