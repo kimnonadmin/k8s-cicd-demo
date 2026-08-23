@@ -82,7 +82,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('6. Refresh ECR Pull Secret') {
             steps {
                 withCredentials([
@@ -140,6 +140,8 @@ pipeline {
                 }
             }
         }
+
+    }
 
     post {
         always {
