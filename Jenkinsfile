@@ -12,6 +12,9 @@ pipeline {
 
         K8S_NAMESPACE     = 'cicd-lab'
         CONTROL_PUBLIC_IP = '13.212.196.141'
+        WORKER_PUBLIC_IP  = '18.143.90.89' // IP Worker Node để Smoke Test HTTP Endpoint
+        APP_NAME          = 'myapp'
+        K8S_CMD           = 'kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true'
     }
 
     stages {
@@ -23,7 +26,6 @@ pipeline {
 
         stage('2. Build Image') {
             steps {
-                // Nếu Dockerfile nằm ngay ngoài thư mục gốc repo thì giữ nguyên '.', nếu nằm trong folder 'app' thì dùng dir('app')
                 sh '''
                     set -eu
                     docker build -t "$IMAGE_URI" .
@@ -31,7 +33,7 @@ pipeline {
             }
         }
 
-        stage('3. Smoke Test') {
+        stage('3. Local Smoke Test') {
             steps {
                 sh '''
                     set -eu
@@ -75,7 +77,7 @@ pipeline {
                             rm -f /tmp/k8s-tunnel.pid
                         fi
 
-                        # Forward cổng 16443 qua IP nội bộ 10.20.10.69:6443 thay vì 127.0.0.1
+                        # Forward cổng 16443 qua IP nội bộ
                         ssh -f -N \
                             -o ExitOnForwardFailure=yes \
                             -o ServerAliveInterval=10 \
@@ -102,11 +104,11 @@ pipeline {
 
                         ECR_PASSWORD=$(aws ecr get-login-password --region "$AWS_REGION")
 
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" create secret docker-registry ecr-registry-secret \
+                        $K8S_CMD -n "$K8S_NAMESPACE" create secret docker-registry ecr-registry-secret \
                             --docker-server="$ECR_REGISTRY" \
                             --docker-username=AWS \
                             --docker-password="$ECR_PASSWORD" \
-                            --dry-run=client -o yaml | kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true apply -f -
+                            --dry-run=client -o yaml | $K8S_CMD -n "$K8S_NAMESPACE" apply -f -
 
                         unset ECR_PASSWORD
                     '''
@@ -114,49 +116,86 @@ pipeline {
             }
         }
 
-        stage('7. Deploy to Kubernetes') {
+        stage('7. Deploy & K8s Rollout Verify') {
             steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig-hybrid-lab', variable: 'KUBECONFIG')
-                ]) {
+                withCredentials([file(credentialsId: 'kubeconfig-hybrid-lab', variable: 'KUBECONFIG')]) {
                     sh '''
                         set -eu
 
-                        sed "s|MY_ECR_IMAGE|${IMAGE_URI}|g" deployment.yaml | kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" apply -f -
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" apply -f service.yaml
-                        
-                        sleep 3
+                        echo "=== BƯỚC 1: APPLY MANIFESTS & ANNOTATE CAUSE ==="
+                        sed "s|MY_ECR_IMAGE|${IMAGE_URI}|g" deployment.yaml | $K8S_CMD -n "$K8S_NAMESPACE" apply -f -
+                        $K8S_CMD -n "$K8S_NAMESPACE" apply -f service.yaml
 
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" rollout status deployment/myapp --timeout=60s || {
-                            echo "Rollout dang dien ra, tiep tuc buoc Verify..."
+                        $K8S_CMD -n "$K8S_NAMESPACE" annotate deployment/"$APP_NAME" \
+                          kubernetes.io/change-cause="image=${IMAGE_URI}, build=${BUILD_NUMBER}, commit=${GIT_COMMIT:-N/A}" \
+                          --overwrite
+
+                        echo "=== BƯỚC 2: KIỂM TRA ROLLOUT STATUS (TIMEOUT 180S) ==="
+                        if ! $K8S_CMD -n "$K8S_NAMESPACE" rollout status deployment/"$APP_NAME" --timeout=180s; then
+                            echo " K8s Rollout thất bại! Đang lấy log chẩn đoán..."
+
+                            # 1. Capture Diagnostics trước khi pod lỗi bị xóa
+                            $K8S_CMD -n "$K8S_NAMESPACE" get pods -l app="$APP_NAME" -o wide || true
+                            $K8S_CMD -n "$K8S_NAMESPACE" get events -n "$K8S_NAMESPACE" --sort-by=.metadata.creationTimestamp || true
+                            $K8S_CMD -n "$K8S_NAMESPACE" logs -l app="$APP_NAME" --tail=100 || true
+
+                            echo " Tiến hành Auto-Rollback về phiên bản cũ..."
+                            $K8S_CMD -n "$K8S_NAMESPACE" rollout undo deployment/"$APP_NAME"
+                            $K8S_CMD -n "$K8S_NAMESPACE" rollout status deployment/"$APP_NAME" --timeout=180s || true
+
+                            exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('8. Post-Deploy HTTP Smoke Test') {
+            steps {
+                script {
+                    // Retry curl 5 lần, mỗi lần cách nhau 3 giây
+                    int result = sh(
+                        script: """
+                            curl --fail --silent --show-error --retry 5 --retry-delay 3 "http://${WORKER_PUBLIC_IP}:30080/"
+                        """,
+                        returnStatus: true
+                    )
+
+                    if (result != 0) {
+                        withCredentials([file(credentialsId: 'kubeconfig-hybrid-lab', variable: 'KUBECONFIG')]) {
+                            sh '''
+                                echo " HTTP Smoke Test thất bại! Ứng dụng không phản hồi thành công qua NodePort."
+
+                                # Capture Diagnostics
+                                $K8S_CMD -n "$K8S_NAMESPACE" get pods -l app="$APP_NAME" -o wide || true
+                                $K8S_CMD -n "$K8S_NAMESPACE" logs -l app="$APP_NAME" --tail=100 || true
+
+                                echo " Tiến hành Auto-Rollback về phiên bản cũ..."
+                                $K8S_CMD -n "$K8S_NAMESPACE" rollout undo deployment/"$APP_NAME"
+                                $K8S_CMD -n "$K8S_NAMESPACE" rollout status deployment/"$APP_NAME" --timeout=180s || true
+
+                                exit 1
+                            '''
                         }
-                    '''
+                    } else {
+                        echo " HTTP Smoke Test thành công rực rỡ!"
+                    }
                 }
             }
         }
-
-        stage('8. Verify') {
-            steps {
-                withCredentials([
-                    file(credentialsId: 'kubeconfig-hybrid-lab', variable: 'KUBECONFIG')
-                ]) {
-                    sh '''
-                        set -eu
-
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get deployment myapp
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get pods -l app=myapp -o wide
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get service myapp-service
-                        kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true -n "$K8S_NAMESPACE" get deployment myapp -o jsonpath='{.spec.template.spec.containers[0].image}'
-                        echo
-                    '''
-                }
-            }
-        }
-
     }
 
     post {
         always {
+            // In ra lịch sử Deployment trước khi đóng SSH Tunnel
+            withCredentials([file(credentialsId: 'kubeconfig-hybrid-lab', variable: 'KUBECONFIG')]) {
+                sh '''
+                    echo "=== LỊCH SỬ DEPLOYMENT HIỆN TẠI ==="
+                    $K8S_CMD -n "$K8S_NAMESPACE" rollout history deployment/"$APP_NAME" || true
+                '''
+            }
+
+            // Dọn dẹp local container và SSH Tunnel
             sh '''
                 docker rm -f "myapp-test-${BUILD_NUMBER}" 2>/dev/null || true
 
@@ -167,10 +206,10 @@ pipeline {
             '''
         }
         success {
-            echo 'Pipeline thành công: Image đã push lên ECR và deploy thành công lên Kubernetes!'
+            echo 'Pipeline thành công: Image đã push lên ECR, deploy và verify thành công lên Kubernetes!'
         }
         failure {
-            echo 'Pipeline thất bại. Vui lòng kiểm tra Console Output của bước bị lỗi.'
+            echo 'Pipeline thất bại. Hệ thống đã tự động Rollback (nếu lỗi ở bước Deploy/Smoke Test). Vui lòng kiểm tra Console Output.'
         }
     }
 }
