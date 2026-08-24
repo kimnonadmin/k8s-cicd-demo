@@ -69,16 +69,20 @@ pipeline {
                     sh '''
                         set -eu
                         mkdir -p ~/.ssh
-                        ssh-keyscan -H "$CONTROL_PUBLIC_IP" >> ~/.ssh/known_hosts
+                        touch ~/.ssh/known_hosts
+
+                        # Quét host key có timeout 5s và ghi trực tiếp vào known_hosts
+                        ssh-keyscan -T 5 -H "$CONTROL_PUBLIC_IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 
                         # Dọn dẹp tunnel cũ nếu có
                         if [ -f /tmp/k8s-tunnel.pid ]; then
-                            kill $(cat /tmp/k8s-tunnel.pid) || true
+                            kill $(cat /tmp/k8s-tunnel.pid) 2>/dev/null || true
                             rm -f /tmp/k8s-tunnel.pid
                         fi
 
-                        # Forward cổng 16443 qua IP nội bộ
+                        # Open SSH Tunnel background và lưu PID
                         ssh -f -N \
+                            -o StrictHostKeyChecking=no \
                             -o ExitOnForwardFailure=yes \
                             -o ServerAliveInterval=10 \
                             -o ServerAliveCountMax=3 \
