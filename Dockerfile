@@ -1,4 +1,3 @@
 FROM nginx:alpine
-# Cố tình ghi nội dung báo lỗi vào index.html 
-RUN echo "<h1>This File is Broken</h1>" > /usr/share/nginx/html/wrong_path.html
+RUN echo "<h1>Hello from Kubernetes CI/CD Pipeline version 3!</h1>" > /usr/share/nginx/html/index.html
 EXPOSE 80
