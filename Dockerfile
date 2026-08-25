@@ -1,3 +1,3 @@
 FROM nginx:alpine
-COPY index.html /usr/share/nginx/html/index.html
+RUN echo "<h1>Hello from Kubernetes CI/CD Pipeline version 2!</h1>" > /usr/share/nginx/html/index.html
 EXPOSE 80
