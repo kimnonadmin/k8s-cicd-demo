@@ -34,7 +34,7 @@ pipeline {
         }
 
         stage('3. Local Smoke Test') {
-            steps {5
+            steps {
                 sh '''
                     set -eu
                     TEST_CONTAINER="myapp-test-${BUILD_NUMBER}"
