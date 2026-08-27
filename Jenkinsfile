@@ -11,8 +11,8 @@ pipeline {
         IMAGE_URI         = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
 
         K8S_NAMESPACE     = 'cicd-lab'
-        CONTROL_PUBLIC_IP = '13.228.75.10' // update mõi lần rs máy
-        WORKER_PUBLIC_IP  = '13.250.21.66' // IP Worker Node để Smoke Test HTTP Endpoint
+        CONTROL_PUBLIC_IP = '13.229.242.71' // update mõi lần rs máy
+        WORKER_PUBLIC_IP  = '47.128.14.71' // IP Worker Node để Smoke Test HTTP Endpoint
         APP_NAME          = 'myapp'
         K8S_CMD           = 'kubectl --server=https://127.0.0.1:16443 --insecure-skip-tls-verify=true'
     }
